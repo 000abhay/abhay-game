@@ -3,43 +3,53 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Dodge — Final (Movement + Gyro + Sounds)</title>
+  <title>Dodge — Final (Mobile tweaks)</title>
   <style>
-    :root{--bg:#071025;--card:#0f1724;--accent:#ffd166;--muted:#94a3b8}
+    :root{
+      --bg:#071025;--card:#0f1724;--accent:#ffd166;--muted:#94a3b8;
+      --hud-height:56px;
+    }
     *{box-sizing:border-box}
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial}
-    body{display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#071025,#06121b);color:#e6eef8}
-    .wrap{width:100%;max-width:980px;padding:18px;position:relative}
-    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-    h1{font-size:18px;margin:0}
-    .hud{display:flex;gap:12px;align-items:center}
-    .chip{background:var(--card);padding:8px 12px;border-radius:10px;font-size:14px;color:var(--muted)}
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Arial;background:var(--bg);color:#e6eef8}
+    body{display:flex;align-items:center;justify-content:center}
+    .wrap{width:100%;max-width:980px;padding:12px;position:relative}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;height:var(--hud-height)}
+    h1{font-size:16px;margin:0}
+    .hud{display:flex;gap:8px;align-items:center}
+    .chip{background:var(--card);padding:6px 10px;border-radius:10px;font-size:13px;color:var(--muted)}
+    /* Canvas */
     canvas{display:block;background:linear-gradient(180deg,#0f1b2a,#071026);border-radius:10px;width:100%;height:56vh;max-height:760px;outline:none}
-    .controls{margin-top:12px;display:flex;gap:8px;align-items:center}
+    .controls{margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     button{background:var(--accent);border:none;padding:8px 12px;border-radius:8px;font-weight:600;cursor:pointer}
     .small{font-size:13px;color:var(--muted)}
-    .modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(3,7,12,0.9);padding:22px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,12,0.6);text-align:center;display:none;z-index:30}
+    .modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(3,7,12,0.92);padding:16px;border-radius:12px;box-shadow:0 10px 30px rgba(2,6,12,0.6);text-align:center;display:none;z-index:60}
     .modal.show{display:block}
     /* fallback movement buttons bottom-left/right (B1) */
-    .move-btn{position:fixed;width:90px;height:90px;border-radius:12px;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;z-index:25;user-select:none}
+    .move-btn{position:fixed;width:88px;height:88px;border-radius:12px;background:rgba(0,0,0,0.36);display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;z-index:50;user-select:none}
     .move-left{left:12px;bottom:18px}
     .move-right{right:12px;bottom:18px}
     .hidden{display:none}
-    @media (max-width:520px){canvas{height:48vh}}
+    /* mobile-specific tweaks */
+    @media (max-width:600px){
+      header{display:none}                /* hide header on mobile per request */
+      canvas{height:70vh !important}      /* larger game area: 70vh on mobile (M1) */
+      .controls .small{display:none}      /* hide small helper text on mobile */
+      .move-btn{width:76px;height:76px;border-radius:10px} 
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
+  <div class="wrap" id="wrap">
+    <header id="header">
       <h1>Dodge — Jump & Move (Desktop + Mobile)</h1>
-      <div class="hud">
+      <div class="hud" id="hud">
         <div class="chip">Score: <span id="score">0</span></div>
         <div class="chip">High: <span id="high">0</span></div>
         <div class="chip small">Controls: ← → + Space (desktop), tap jump + tilt/buttons (mobile)</div>
       </div>
     </header>
 
-    <canvas id="game" tabindex="0"></canvas>
+    <canvas id="game" tabindex="0" aria-label="Dodge game canvas"></canvas>
 
     <div class="controls">
       <button id="startBtn">Start Game</button>
@@ -50,321 +60,360 @@
       <h2 id="modalTitle">Game Over</h2>
       <div>Score: <strong id="finalScore">0</strong></div>
       <div class="small">High Score: <strong id="finalHigh">0</strong></div>
-      <div style="margin-top:12px"><button id="playAgainBtn">Play Again</button></div>
+      <div style="margin-top:10px"><button id="playAgainBtn">Play Again</button></div>
     </div>
 
     <!-- fallback movement buttons (hidden by default) -->
-    <div id="btnLeft" class="move-btn move-left hidden">◀</div>
-    <div id="btnRight" class="move-btn move-right hidden">▶</div>
-
+    <div id="btnLeft" class="move-btn move-left hidden" aria-hidden="true">◀</div>
+    <div id="btnRight" class="move-btn move-right hidden" aria-hidden="true">▶</div>
   </div>
 
-  <script>
-  /* FINAL GAME:
-     - Desktop: left/right continuous using arrows, space for jump
-     - Mobile: tap anywhere to jump, device tilt (gyro) for left/right; if unavailable show bottom corner buttons (hold to move)
-     - Start button begins music and gameplay; Play Again restarts music & game (D1: difficulty resets)
-     - All assets expected in same folder: profile.jpg, funny-african-tabla-230535.mp3, funny-spring-jump-140378.mp3, funny-laughing-406018.mp3
-  */
+<script>
+/* Final game single-file
+   - Mobile adjustments: header hidden under 600px, canvas height = 70vh
+   - Tap anywhere outside buttons = jump (buttons still work)
+   - Desktop: arrow keys for continuous move, space to jump
+   - Gyro tilt if available; fallback buttons shown when unavailable
+   - Sounds and images expected in same folder
+*/
 
-  // ===== CONFIG =====
-  const SETTINGS = {
-    gravity: 1800,
-    jumpVelocity: 900,
-    playerW: 96,
-    playerH: 96,
-    groundOffset: 40,
-    obstacleW: 36,
-    obstacleH: 44,
-    baseSpeed: 220,
-    spawnIntervalInitial: 1800,
-    minSpawnInterval: 800,
-    moveSpeed: 260 // horizontal move speed px/sec
-  };
+/* =========================
+   SETTINGS
+   ========================= */
+const SETTINGS = {
+  gravity: 1800,
+  jumpVelocity: 900,
+  playerW: 96,
+  playerH: 96,
+  groundOffset: 40,
+  obstacleW: 36,
+  obstacleH: 44,
+  baseSpeed: 220,
+  spawnIntervalInitial: 1800,
+  minSpawnInterval: 800,
+  moveSpeed: 260
+};
 
-  // ===== CANVAS =====
-  const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
-  let W = 900, H = 380;
-  function resizeCanvas(){
-    const containerW = Math.min(document.querySelector('.wrap').clientWidth, 980);
-    W = Math.floor(containerW);
-    H = Math.floor(containerW * 0.42);
-    canvas.width = W * devicePixelRatio;
-    canvas.height = H * devicePixelRatio;
-    canvas.style.height = H + 'px';
-    ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+/* =========================
+   CANVAS SETUP
+   ========================= */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 900, H = 380;
+function resizeCanvas(){
+  const containerW = Math.min(document.querySelector('.wrap').clientWidth, 980);
+  W = Math.floor(containerW);
+  // adapt height: desktop uses ratio, mobile CSS overrides to 70vh; still set logical drawing size
+  const computedStyle = getComputedStyle(canvas);
+  const cssHeightPx = canvas.clientHeight || Math.floor(containerW * 0.42);
+  H = Math.floor(cssHeightPx);
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  canvas.style.height = cssHeightPx + 'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resizeCanvas);
+setTimeout(resizeCanvas, 40); // small delay to allow CSS to apply
+
+/* =========================
+   ASSETS (from same folder)
+   ========================= */
+const playerImg = new Image(); playerImg.src = './profile.jpg';
+const bgAudio = new Audio('funny-african-tabla-230535.mp3'); bgAudio.loop = true; bgAudio.volume = 0.28;
+const jumpAudio = new Audio('funny-spring-jump-140378.mp3'); jumpAudio.volume = 0.6;
+const hitAudio = new Audio('funny-laughing-406018.mp3'); hitAudio.volume = 1.0;
+
+/* =========================
+   GAME STATE
+   ========================= */
+let running=false, score=0, lastTime=0, worldSpeed = SETTINGS.baseSpeed, spawnTimer=0, spawnInterval=SETTINGS.spawnIntervalInitial;
+let obstacles = [];
+const player = {x:80, y:0, w:SETTINGS.playerW, h:SETTINGS.playerH, vy:0, grounded:true, vx:0};
+const input = {left:false, right:false, gyroAvailable:false, gyroX:0};
+let btnLeftHeld=false, btnRightHeld=false;
+
+/* High score load */
+let high = 0; try{ high = parseInt(localStorage.getItem('dodge_high'))||0 }catch(e){ high=0 }
+document.getElementById('high').textContent = high;
+
+/* =========================
+   INPUT: Desktop keys
+   ========================= */
+window.addEventListener('keydown', e => {
+  if(e.key === 'ArrowLeft') { input.left = true; }
+  if(e.key === 'ArrowRight') { input.right = true; }
+  if(e.code === 'Space') { e.preventDefault(); if(running) doJump(); }
+  if(e.key === 'Enter') { if(!running) startGame(); }
+});
+window.addEventListener('keyup', e => {
+  if(e.key === 'ArrowLeft') { input.left = false; }
+  if(e.key === 'ArrowRight') { input.right = false; }
+});
+
+/* =========================
+   INPUT: Tap anywhere to jump (mobile & desktop)
+   - Buttons keep priority (we prevent jump when tapping on buttons)
+   ========================= */
+function isEventOnControl(target){
+  // return true if the event target (or its ancestor) is a clickable control we should not treat as a game-jump
+  if(!target) return false;
+  const controlIds = ['startBtn','playAgainBtn','btnLeft','btnRight'];
+  let el = target;
+  while(el && el !== document.body){
+    if(el.id && controlIds.includes(el.id)) return true;
+    el = el.parentElement;
   }
-  window.addEventListener('resize', resizeCanvas);
-  resizeCanvas();
+  return false;
+}
+// touchstart / mousedown for jump (anywhere except controls)
+function onPointerDownForJump(e){
+  if(!running) return; // do not jump when game not running
+  // find actual element touched/clicked
+  const target = (e.targetTouches && e.targetTouches[0] && document.elementFromPoint(e.targetTouches[0].clientX, e.targetTouches[0].clientY)) || e.target;
+  if(isEventOnControl(target)) return; // let buttons work normally
+  doJump();
+}
+canvas.addEventListener('touchstart', onPointerDownForJump, {passive:false});
+canvas.addEventListener('mousedown', onPointerDownForJump);
 
-  // ===== ASSETS =====
-  const playerImg = new Image(); playerImg.src = './profile.jpg';
+/* Also allow tapping anywhere on the page (outside canvas) to jump, but keep buttons priority */
+document.addEventListener('touchstart', function(e){
+  if(!running) return;
+  const touch = e.touches[0];
+  const el = document.elementFromPoint(touch.clientX, touch.clientY);
+  if(isEventOnControl(el)) return;
+  doJump();
+}, {passive:false});
+document.addEventListener('mousedown', function(e){
+  if(!running) return;
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  if(isEventOnControl(el)) return;
+  doJump();
+});
 
-  // Audio files (same folder)
-  const bgAudio = new Audio('funny-african-tabla-230535.mp3'); bgAudio.loop = true; bgAudio.volume = 0.28;
-  const jumpAudio = new Audio('funny-spring-jump-140378.mp3'); jumpAudio.volume = 0.6;
-  const hitAudio = new Audio('funny-laughing-406018.mp3'); hitAudio.volume = 1.0;
+/* doJump helper */
+function doJump(){ if(player.grounded){ player.vy = -SETTINGS.jumpVelocity; player.grounded = false; try{ jumpAudio.currentTime = 0; jumpAudio.play().catch(()=>{}); }catch(e){} } }
 
-  // ===== GAME STATE =====
-  let running=false, score=0, lastTime=0, worldSpeed = SETTINGS.baseSpeed, spawnTimer=0, spawnInterval=SETTINGS.spawnIntervalInitial;
-  let obstacles = [];
-  const player = {x:80, y:0, w:SETTINGS.playerW, h:SETTINGS.playerH, vy:0, grounded:true, vx:0};
+/* =========================
+   GYRO handling (GS2 sensitivity)
+   ========================= */
+const gammaThreshold = 6;
+const gammaMax = 30;
+function handleOrientation(event){
+  let gamma = null;
+  if(event.gamma !== undefined && event.gamma !== null) gamma = event.gamma;
+  if(gamma === null) return;
+  if(Math.abs(gamma) < gammaThreshold) input.gyroX = 0;
+  else{
+    const v = Math.max(-gammaMax, Math.min(gammaMax, gamma)) / gammaMax;
+    input.gyroX = v;
+  }
+}
+async function enableGyroIfAvailable(){
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    try{
+      const resp = await DeviceOrientationEvent.requestPermission();
+      if(resp === 'granted'){
+        window.addEventListener('deviceorientation', handleOrientation);
+        input.gyroAvailable = true; hideMoveButtons(); return true;
+      } else { input.gyroAvailable = false; showMoveButtons(); return false; }
+    }catch(e){ input.gyroAvailable = false; showMoveButtons(); return false; }
+  } else if(typeof DeviceOrientationEvent !== 'undefined'){
+    let saw=false;
+    const once = (e)=>{ saw=true; input.gyroAvailable=true; window.removeEventListener('deviceorientation', once); hideMoveButtons(); };
+    window.addEventListener('deviceorientation', once);
+    window.addEventListener('deviceorientation', handleOrientation);
+    setTimeout(()=>{ if(!saw) { input.gyroAvailable=false; showMoveButtons(); } }, 900);
+    return input.gyroAvailable;
+  } else {
+    input.gyroAvailable = false; showMoveButtons(); return false;
+  }
+}
 
-  // movement input state
-  const input = {left:false, right:false, gyroAvailable:false, gyroX:0};
-  // fallback buttons hold state
-  let btnLeftHeld=false, btnRightHeld=false;
+/* =========================
+   Fallback on-screen buttons (B1)
+   ========================= */
+const btnLeft = document.getElementById('btnLeft');
+const btnRight = document.getElementById('btnRight');
+function showMoveButtons(){ btnLeft.classList.remove('hidden'); btnRight.classList.remove('hidden'); }
+function hideMoveButtons(){ btnLeft.classList.add('hidden'); btnRight.classList.add('hidden'); }
 
-  // load high score
-  let high = 0; try{ high = parseInt(localStorage.getItem('dodge_high'))||0 }catch(e){ high=0 }
+btnLeft.addEventListener('touchstart', e=>{ e.preventDefault(); btnLeftHeld=true; }, {passive:false});
+btnLeft.addEventListener('touchend', e=>{ e.preventDefault(); btnLeftHeld=false; }, {passive:false});
+btnLeft.addEventListener('mousedown', e=>{ btnLeftHeld=true; });
+window.addEventListener('mouseup', ()=>{ btnLeftHeld=false; btnRightHeld=false; });
+
+btnRight.addEventListener('touchstart', e=>{ e.preventDefault(); btnRightHeld=true; }, {passive:false});
+btnRight.addEventListener('touchend', e=>{ e.preventDefault(); btnRightHeld=false; }, {passive:false});
+btnRight.addEventListener('mousedown', e=>{ btnRightHeld=true; });
+
+/* =========================
+   START / RESTART (Start triggers bg audio)
+   ========================= */
+const startBtn = document.getElementById('startBtn');
+const playAgainBtn = document.getElementById('playAgainBtn');
+startBtn.addEventListener('click', ()=>{ startBtn.disabled=true; startGame(); });
+playAgainBtn.addEventListener('click', ()=>{ document.getElementById('modal').classList.remove('show'); startGame(); });
+
+function startGame(){
+  // Reset difficulty (D1)
+  spawnInterval = SETTINGS.spawnIntervalInitial;
+  worldSpeed = SETTINGS.baseSpeed;
+
+  // try to enable gyro (may prompt on iOS)
+  enableGyroIfAvailable();
+
+  // start background music now (Start pressed)
+  try{ bgAudio.currentTime = 0; bgAudio.play().catch(()=>{}); }catch(e){}
+
+  obstacles = [];
+  score = 0; lastTime = performance.now(); running = true; spawnTimer = 0;
+  player.x = 80; player.w = SETTINGS.playerW * Math.min(1, canvas.clientWidth/700); player.h = SETTINGS.playerH * Math.min(1, canvas.clientWidth/700);
+  player.y = H - SETTINGS.groundOffset - player.h; player.vy = 0; player.grounded = true; player.vx = 0;
+  document.getElementById('modal').classList.remove('show');
+  canvas.focus();
+  requestAnimationFrame(loop);
+}
+
+function endGame(){
+  running = false;
+  try{ bgAudio.pause(); bgAudio.currentTime = 0; }catch(e){}
+  try{ hitAudio.currentTime = 0; hitAudio.play().catch(()=>{}); }catch(e){}
+  document.getElementById('finalScore').textContent = Math.floor(score);
+  if(score > high){ high = Math.floor(score); try{ localStorage.setItem('dodge_high', high) }catch(e){} }
+  document.getElementById('finalHigh').textContent = high;
   document.getElementById('high').textContent = high;
+  document.getElementById('modalTitle').textContent = 'Game Over';
+  document.getElementById('modal').classList.add('show');
+  startBtn.disabled = false;
+}
 
-  // ===== INPUT: Desktop keys =====
-  window.addEventListener('keydown', e => {
-    if(e.key === 'ArrowLeft') { input.left = true; }
-    if(e.key === 'ArrowRight') { input.right = true; }
-    if(e.code === 'Space') { e.preventDefault(); if(running) doJump(); }
-    if(e.key === 'Enter') { if(!running) startGame(); }
-  });
-  window.addEventListener('keyup', e => {
-    if(e.key === 'ArrowLeft') { input.left = false; }
-    if(e.key === 'ArrowRight') { input.right = false; }
-  });
+/* =========================
+   SPAWN & LOOP
+   ========================= */
+function spawnObstacle(){
+  const h = SETTINGS.obstacleH * (0.9 + Math.random()*0.3);
+  obstacles.push({x: W + 20, y: H - SETTINGS.groundOffset - h, w: SETTINGS.obstacleW, h, passed:false});
+  spawnInterval = Math.max(SETTINGS.minSpawnInterval, spawnInterval - 25);
+  worldSpeed *= 1.007;
+}
 
-  // ===== INPUT: Mobile tap for jump =====
-  canvas.addEventListener('touchstart', e => {
-    if(!running) return;
-    doJump();
-  }, {passive:false});
-  canvas.addEventListener('mousedown', e => { if(!running) return; doJump(); });
-
-  function doJump(){ if(player.grounded){ player.vy = -SETTINGS.jumpVelocity; player.grounded = false; try{ jumpAudio.currentTime = 0; jumpAudio.play().catch(()=>{}); }catch(e){} } }
-
-  // ===== GYRO (DeviceOrientation) - GS2 sensitivity =====
-  // gamma threshold ~ medium sensitivity
-  const gammaThreshold = 6; // degrees threshold for medium sensitivity
-  const gammaMax = 30; // cap
-
-  function handleOrientation(event){
-    let gamma = null;
-    if(event.gamma !== undefined && event.gamma !== null) gamma = event.gamma;
-    if(gamma === null) return;
-    if(Math.abs(gamma) < gammaThreshold){ input.gyroX = 0; }
-    else{
-      const v = Math.max(-gammaMax, Math.min(gammaMax, gamma)) / gammaMax;
-      input.gyroX = v; // negative = tilt left
-    }
-  }
-
-  // request permission on iOS 13+ when starting
-  async function enableGyroIfAvailable(){
-    if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      try{
-        const resp = await DeviceOrientationEvent.requestPermission();
-        if(resp === 'granted'){
-          window.addEventListener('deviceorientation', handleOrientation);
-          input.gyroAvailable = true;
-          hideMoveButtons();
-          return true;
-        } else { input.gyroAvailable = false; showMoveButtons(); return false; }
-      }catch(e){ input.gyroAvailable = false; showMoveButtons(); return false; }
-    } else if(typeof DeviceOrientationEvent !== 'undefined'){
-      // non-iOS: listen and detect if events fire
-      let saw=false;
-      const once = (e)=>{ saw=true; input.gyroAvailable=true; window.removeEventListener('deviceorientation', once); hideMoveButtons(); };
-      window.addEventListener('deviceorientation', once);
-      // attach normal handler for continuous updates
-      window.addEventListener('deviceorientation', handleOrientation);
-      setTimeout(()=>{ if(!saw) { input.gyroAvailable=false; showMoveButtons(); } }, 900);
-      return input.gyroAvailable;
-    } else {
-      input.gyroAvailable = false; showMoveButtons(); return false;
-    }
-  }
-
-  // ===== Fallback on-screen buttons B1 =====
-  const btnLeft = document.getElementById('btnLeft');
-  const btnRight = document.getElementById('btnRight');
-
-  function showMoveButtons(){ btnLeft.classList.remove('hidden'); btnRight.classList.remove('hidden'); }
-  function hideMoveButtons(){ btnLeft.classList.add('hidden'); btnRight.classList.add('hidden'); }
-
-  btnLeft.addEventListener('touchstart', e=>{ e.preventDefault(); btnLeftHeld=true; }, {passive:false});
-  btnLeft.addEventListener('touchend', e=>{ e.preventDefault(); btnLeftHeld=false; }, {passive:false});
-  btnLeft.addEventListener('mousedown', e=>{ btnLeftHeld=true; });
-  window.addEventListener('mouseup', ()=>{ btnLeftHeld=false; btnRightHeld=false; });
-
-  btnRight.addEventListener('touchstart', e=>{ e.preventDefault(); btnRightHeld=true; }, {passive:false});
-  btnRight.addEventListener('touchend', e=>{ e.preventDefault(); btnRightHeld=false; }, {passive:false});
-  btnRight.addEventListener('mousedown', e=>{ btnRightHeld=true; });
-
-  // ===== START / RESTART logic =====
-  const startBtn = document.getElementById('startBtn');
-  const playAgainBtn = document.getElementById('playAgainBtn');
-  startBtn.addEventListener('click', ()=>{ startBtn.disabled=true; startGame(); });
-  playAgainBtn.addEventListener('click', ()=>{ document.getElementById('modal').classList.remove('show'); startGame(); });
-
-  function startGame(){
-    // D1: reset difficulty and state
-    spawnInterval = SETTINGS.spawnIntervalInitial;
-    worldSpeed = SETTINGS.baseSpeed;
-
-    // enable gyro (may prompt)
-    enableGyroIfAvailable();
-
-    // start background music now (Start pressed)
-    try{ bgAudio.currentTime = 0; bgAudio.play().catch(()=>{}); }catch(e){}
-
-    obstacles = [];
-    score = 0; lastTime = performance.now(); running = true; spawnTimer = 0;
-    player.x = 80; player.w = SETTINGS.playerW * Math.min(1, canvas.clientWidth/700); player.h = SETTINGS.playerH * Math.min(1, canvas.clientWidth/700);
-    player.y = H - SETTINGS.groundOffset - player.h; player.vy = 0; player.grounded = true; player.vx = 0;
-    document.getElementById('modal').classList.remove('show');
-    // focus canvas for keyboard
-    canvas.focus();
-    requestAnimationFrame(loop);
-  }
-
-  function endGame(){
-    running = false;
-    // stop background and play hit immediately
-    try{ bgAudio.pause(); bgAudio.currentTime = 0; }catch(e){}
-    try{ hitAudio.currentTime = 0; hitAudio.play().catch(()=>{}); }catch(e){}
-
-    document.getElementById('finalScore').textContent = Math.floor(score);
-    if(score > high){ high = Math.floor(score); try{ localStorage.setItem('dodge_high', high) }catch(e){} }
-    document.getElementById('finalHigh').textContent = high;
-    document.getElementById('high').textContent = high;
-    document.getElementById('modalTitle').textContent = 'Game Over';
-    document.getElementById('modal').classList.add('show');
-    // re-enable Start button so user can start again if they prefer
-    startBtn.disabled = false;
-  }
-
-  // jump helper (used by keys and taps)
-  function doJumpKey(){ if(player.grounded){ player.vy = -SETTINGS.jumpVelocity; player.grounded = false; try{ jumpAudio.currentTime = 0; jumpAudio.play().catch(()=>{}); }catch(e){} } }
-
-  // ===== SPAWN/LOOP =====
-  function spawnObstacle(){
-    const h = SETTINGS.obstacleH * (0.9 + Math.random()*0.3);
-    obstacles.push({x: W + 20, y: H - SETTINGS.groundOffset - h, w: SETTINGS.obstacleW, h, passed:false});
-    spawnInterval = Math.max(SETTINGS.minSpawnInterval, spawnInterval - 25);
-    worldSpeed *= 1.007;
-  }
-
-  function loop(t){
-    if(!running) return;
-    const dt = Math.min((t - lastTime)/1000, 0.05);
-    lastTime = t;
-    update(dt);
-    draw();
-    requestAnimationFrame(loop);
-  }
-
-  function update(dt){
-    // horizontal movement H1: continuous while input holds
-    let moveDir = 0;
-    if(input.left) moveDir -= 1;
-    if(input.right) moveDir += 1;
-    if(btnLeftHeld) moveDir -= 1;
-    if(btnRightHeld) moveDir += 1;
-    if(Math.abs(input.gyroX) > 0.05) moveDir += input.gyroX; // gyroX in -1..1
-
-    moveDir = Math.max(-1, Math.min(1, moveDir));
-    player.x += moveDir * SETTINGS.moveSpeed * dt;
-    player.x = Math.max(0, Math.min(W - player.w, player.x));
-
-    // score
-    score += dt * 10; document.getElementById('score').textContent = Math.floor(score);
-
-    // spawn
-    spawnTimer += dt*1000;
-    if(spawnTimer >= spawnInterval){ spawnTimer = 0; spawnObstacle(); }
-
-    // physics
-    player.vy += SETTINGS.gravity * dt;
-    player.y += player.vy * dt;
-    const groundY = H - SETTINGS.groundOffset - player.h;
-    if(player.y >= groundY){ player.y = groundY; player.vy = 0; player.grounded = true; }
-
-    // obstacles update & collision
-    for(let i = obstacles.length -1; i>=0; i--){
-      const ob = obstacles[i];
-      ob.x -= worldSpeed * dt;
-      if(ob.x + ob.w < -50) obstacles.splice(i,1);
-      else{
-        if(rectsCollide(player, ob)){ endGame(); return; }
-      }
-    }
-  }
-
-  function rectsCollide(a,b){
-    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
-  }
-
-  // ===== DRAW =====
-  function draw(){
-    ctx.clearRect(0,0,W,H);
-    const grd = ctx.createLinearGradient(0,0,0,H); grd.addColorStop(0,'#071026'); grd.addColorStop(1,'#05131b'); ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
-
-    // ground
-    ctx.fillStyle = '#0b1b2a'; ctx.fillRect(0, H - SETTINGS.groundOffset, W, SETTINGS.groundOffset);
-    for(let x=0;x<W;x+=40){ ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.fillRect(x, H - SETTINGS.groundOffset + 22, 24, 3); }
-
-    // player shadow
-    ctx.beginPath(); ctx.ellipse(player.x + player.w/2, H - SETTINGS.groundOffset + 6, player.w*0.45, 8, 0,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill();
-
-    // player image (no overlays)
-    const imgX = player.x, imgY = player.y, imgW = player.w, imgH = player.h;
-    ctx.save(); roundRectPath(ctx, imgX, imgY, imgW, imgH, 18); ctx.clip();
-    if(playerImg.complete && playerImg.naturalWidth !== 0){ ctx.drawImage(playerImg, imgX, imgY, imgW, imgH); }
-    else{ ctx.fillStyle='#ffd166'; ctx.fillRect(imgX,imgY,imgW,imgH); }
-    ctx.restore();
-
-    // obstacles
-    for(const ob of obstacles){ ctx.fillStyle = '#ff6b6b'; roundRect(ctx, ob.x, ob.y, ob.w, ob.h, 8); ctx.fill();
-      ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.ellipse(ob.x + ob.w*0.28, ob.y + ob.h*0.36, ob.w*0.08, ob.h*0.11,0,0,Math.PI*2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(ob.x + ob.w*0.72, ob.y + ob.h*0.36, ob.w*0.08, ob.h*0.11,0,0,Math.PI*2); ctx.fill(); }
-
-    // HUD
-    ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(12,12,150,42);
-    ctx.fillStyle = '#e6eef8'; ctx.font = '600 16px system-ui'; ctx.fillText('Score: ' + Math.floor(score), 22, 36);
-  }
-
-  function roundRect(ctx,x,y,w,h,r){ if(w<2*r) r=w/2; if(h<2*r) r=h/2; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
-  function roundRectPath(ctx,x,y,w,h,r){ roundRect(ctx,x,y,w,h,r); }
-
-  // ===== helper: detect gyro availability on initial load (show/hide buttons early) =====
-  (async ()=>{
-    // quick try - if device supports and iOS permission is needed we will wait until start
-    if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
-      // don't request now to avoid prompt; wait until start game for permission prompt
-      // show buttons initially; user may enable gyro on Start
-      showMoveButtons();
-    } else if(typeof DeviceOrientationEvent !== 'undefined'){
-      // add one-time listener to detect support
-      let saw=false;
-      const once = ()=>{ saw=true; hideMoveButtons(); window.removeEventListener('deviceorientation', once); };
-      window.addEventListener('deviceorientation', once);
-      setTimeout(()=>{ if(!saw) showMoveButtons(); }, 800);
-    } else {
-      showMoveButtons();
-    }
-  })();
-
-  // START/RESTART will call enableGyroIfAvailable()
-  // Stop bg when page hidden, resume when visible and game running
-  document.addEventListener('visibilitychange', ()=>{
-    if(document.hidden){ try{ bgAudio.pause(); }catch(e){} }
-    else { if(running){ try{ bgAudio.play().catch(()=>{}); }catch(e){} } }
-  });
-
-  // initial draw when image loads
-  playerImg.onload = ()=>{ player.w = SETTINGS.playerW * Math.min(1, canvas.clientWidth/700); player.h = SETTINGS.playerH * Math.min(1, canvas.clientWidth/700); player.y = H - SETTINGS.groundOffset - player.h; draw(); };
-
-  // initial draw
+function loop(t){
+  if(!running) return;
+  const dt = Math.min((t - lastTime)/1000, 0.05);
+  lastTime = t;
+  update(dt);
   draw();
-  </script>
+  requestAnimationFrame(loop);
+}
+
+function update(dt){
+  // horizontal continuous movement H1
+  let moveDir = 0;
+  if(input.left) moveDir -= 1;
+  if(input.right) moveDir += 1;
+  if(btnLeftHeld) moveDir -= 1;
+  if(btnRightHeld) moveDir += 1;
+  if(Math.abs(input.gyroX) > 0.05) moveDir += input.gyroX;
+
+  moveDir = Math.max(-1, Math.min(1, moveDir));
+  player.x += moveDir * SETTINGS.moveSpeed * dt;
+  player.x = Math.max(0, Math.min(W - player.w, player.x));
+
+  // score
+  score += dt * 10; document.getElementById('score').textContent = Math.floor(score);
+
+  // spawn
+  spawnTimer += dt*1000;
+  if(spawnTimer >= spawnInterval){ spawnTimer = 0; spawnObstacle(); }
+
+  // physics
+  player.vy += SETTINGS.gravity * dt;
+  player.y += player.vy * dt;
+  const groundY = H - SETTINGS.groundOffset - player.h;
+  if(player.y >= groundY){ player.y = groundY; player.vy = 0; player.grounded = true; }
+
+  // obstacles update & collision
+  for(let i = obstacles.length -1; i>=0; i--){
+    const ob = obstacles[i];
+    ob.x -= worldSpeed * dt;
+    if(ob.x + ob.w < -50) obstacles.splice(i,1);
+    else{
+      if(rectsCollide(player, ob)){ endGame(); return; }
+    }
+  }
+}
+
+function rectsCollide(a,b){
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/* =========================
+   DRAW
+   ========================= */
+function draw(){
+  // ensure canvas logical size matches CSS (in case of CSS mobile height)
+  const cssH = canvas.clientHeight || Math.floor(W * 0.42);
+  if(cssH !== H){ H = Math.floor(cssH); canvas.height = H * devicePixelRatio; ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); }
+
+  ctx.clearRect(0,0,W,H);
+  const grd = ctx.createLinearGradient(0,0,0,H); grd.addColorStop(0,'#071026'); grd.addColorStop(1,'#05131b'); ctx.fillStyle = grd; ctx.fillRect(0,0,W,H);
+
+  // ground
+  ctx.fillStyle = '#0b1b2a'; ctx.fillRect(0, H - SETTINGS.groundOffset, W, SETTINGS.groundOffset);
+  for(let x=0;x<W;x+=40){ ctx.fillStyle='rgba(255,255,255,0.02)'; ctx.fillRect(x, H - SETTINGS.groundOffset + 22, 24, 3); }
+
+  // player shadow
+  ctx.beginPath(); ctx.ellipse(player.x + player.w/2, H - SETTINGS.groundOffset + 6, player.w*0.45, 8, 0,0,Math.PI*2); ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fill();
+
+  // player image
+  const imgX = player.x, imgY = player.y, imgW = player.w, imgH = player.h;
+  ctx.save(); roundRectPath(ctx, imgX, imgY, imgW, imgH, 18); ctx.clip();
+  if(playerImg.complete && playerImg.naturalWidth !== 0){ ctx.drawImage(playerImg, imgX, imgY, imgW, imgH); }
+  else{ ctx.fillStyle='#ffd166'; ctx.fillRect(imgX,imgY,imgW,imgH); }
+  ctx.restore();
+
+  // obstacles
+  for(const ob of obstacles){ ctx.fillStyle = '#ff6b6b'; roundRect(ctx, ob.x, ob.y, ob.w, ob.h, 8); ctx.fill();
+    ctx.fillStyle = '#2b2b2b'; ctx.beginPath(); ctx.ellipse(ob.x + ob.w*0.28, ob.y + ob.h*0.36, ob.w*0.08, ob.h*0.11,0,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(ob.x + ob.w*0.72, ob.y + ob.h*0.36, ob.w*0.08, ob.h*0.11,0,0,Math.PI*2); ctx.fill(); }
+
+  // HUD (small top-left)
+  ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(12,12,150,42);
+  ctx.fillStyle = '#e6eef8'; ctx.font = '600 16px system-ui'; ctx.fillText('Score: ' + Math.floor(score), 22, 36);
+}
+
+function roundRect(ctx,x,y,w,h,r){ if(w<2*r) r=w/2; if(h<2*r) r=h/2; ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+function roundRectPath(ctx,x,y,w,h,r){ roundRect(ctx,x,y,w,h,r); }
+
+/* =========================
+   INITIALIZE GYRO AVAILABILITY (show/hide buttons early)
+   ========================= */
+(async ()=>{
+  if(typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function'){
+    // don't request now; show buttons so user can still play; permission prompt done on Start
+    showMoveButtons();
+  } else if(typeof DeviceOrientationEvent !== 'undefined'){
+    let saw=false;
+    const once = ()=>{ saw=true; hideMoveButtons(); window.removeEventListener('deviceorientation', once); };
+    window.addEventListener('deviceorientation', once);
+    setTimeout(()=>{ if(!saw) showMoveButtons(); }, 800);
+  } else {
+    showMoveButtons();
+  }
+})();
+
+/* stop bg when hidden, resume when visible (if running) */
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden){ try{ bgAudio.pause(); }catch(e){} }
+  else { if(running){ try{ bgAudio.play().catch(()=>{}); }catch(e){} } }
+});
+
+/* initial draw when image loads and when CSS applied */
+playerImg.onload = ()=>{ player.w = SETTINGS.playerW * Math.min(1, canvas.clientWidth/700); player.h = SETTINGS.playerH * Math.min(1, canvas.clientWidth/700); player.y = H - SETTINGS.groundOffset - player.h; draw(); };
+setTimeout(()=>{ resizeCanvas(); draw(); }, 120);
+
+/* End of script */
+</script>
 </body>
 </html>
